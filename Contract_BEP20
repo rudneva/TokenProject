@@ -1,0 +1,248 @@
+ // SPDX-License-Identifier: GPL-3.0
+
+ pragma solidity >=0.7.0 <0.9.0;
+
+// Safe Mathematical operations
+
+library SafeMath {
+
+  // Returns the addition of two unsigned integers.
+  // Requirements: addition cannot overflow.
+  function safeAdd(uint256 a, uint256 b) internal pure returns (bool success, uint256 c) {
+     c = a + b;
+     if (c < a || c < b) return (false, 0);
+     return (true, c);
+  }
+
+
+  // Returns the subtraction of two unsigned integers.
+  // Requirements: subtraction cannot overflow.
+  function safeSub(uint256 a, uint256 b) internal pure returns (bool success, uint256 c) {
+     if (b > a) return (false, 0);
+     return (true, a - b);
+  }
+
+  // Returns the integer division of two unsigned integers.
+  // Requirements: the divisor cannot be zero.
+  function safeDiv(uint256 a, uint256 b) internal pure returns   (bool success, uint256 c) {
+     if (b == 0) return (false, 0);
+     c = a / b;
+//     if (a != b * c + a % b) return (false,0); There is no case in which this doesn't hold
+
+     return (true, c);
+  }
+
+  // Returns the multiplication of two unsigned integers.
+  // Requirements:multiplication cannot overflow.
+  function safeMul(uint256 a, uint256 b) internal pure returns (bool success, uint256 c) {
+     if (a == 0) return (true, 0);
+     c = a * b;
+     if (c / a != b) return (false, 0);
+     return (true, c);
+  }
+  
+  // Returns the remainder of dividing two unsigned integers.
+  // Requirements: the divisor cannot be zero.
+  function safeMod(uint256 a, uint256 b) internal pure returns (bool success, uint256 c) {
+  	 if (b <= 0) return (false, 0);
+	 c = a % b;
+     return (true, c);
+  }
+
+}
+
+//BEP20 Token
+contract SHIBEMToken {
+
+  using SafeMath for uint256;
+
+  string private _symbol;
+  string private _name;
+  uint8 private _decimals;
+  uint256 private _totalSupply;
+  address private owner;
+
+/* Event on successful execution of the function transfer tokens*/
+  event Transfer(address indexed from, address indexed to, uint256 tokens);
+/* Token Delegation Approval Event */
+  event Approval(address indexed tokenOwner, address indexed spender, uint256 tokens);
+/* Event about the successful completion of the function of burning token */
+  event Burn(address indexed from, uint256 value);
+/* Event about the successful execution of the token freezing function */
+  event Freeze(address indexed from, uint256 value);
+/* Event about the successful execution of the token defrosting function */
+  event Unfreeze(address indexed from, uint256 value);
+
+  /* Mapping */
+  mapping (address => uint256) public balances;      // user balances
+  mapping (address => uint256) public freezes;       // mapping of frozen tokens
+  mapping (address => mapping (address => uint256)) public allowances; // mapping of delegated tokens
+
+  /* Constructor */
+  constructor() {
+      _name = "SHIBEMToken";   // The token name is set
+      _symbol = "SHIBEM";      // The token symbol is set
+      _decimals = 18;          // Number of zeros
+
+      // If you are going to issue 100 tokens, you need to in totalSupply
+      // specify the full number of their minimum parts
+      // (т. е. 100 000 000 000 000 000 000)
+	    // The total issue of tokens is set
+      _totalSupply = 100 * 10**6 * 10**18;	   // 100 million with decimals = 18
+      balances[msg.sender] = _totalSupply;     // All tokens belong to the creator
+      owner = msg.sender;   			   		       // Owner == Token sender
+      emit Transfer(address(0), msg.sender, _totalSupply);
+  }
+
+  function getOwner() external view returns (address) {
+    return owner;
+  }
+
+   function decimals() external view returns (uint8) {
+    return _decimals;
+  }
+
+  function symbol() external view returns (string memory) {
+    return _symbol;
+  }
+
+  function name() external view returns (string memory) {
+    return _name;
+  }
+	
+  function totalSupply() external view  returns (uint256) {
+     return _totalSupply;
+  }
+ 
+  function balanceOf(address account) external view returns (uint256) {
+     return balances[account];
+  }
+
+  /* The function for approving token delegation */
+  /* Allows the sender to withdraw amounts from his account several times. That is, */
+  /* is a confirmation */
+  function approve(address spender, uint256 tokens) external returns (bool) {
+     if (tokens <= 0) return false;
+  	  if (msg.sender == address(0)) return false;
+	  if (spender == address(0)) return false;
+     allowances[msg.sender][spender] = tokens;
+     emit Approval(msg.sender, spender, tokens);
+	return true;
+  }   
+
+  /* Returns the amount from which the sender is still allowed to withdraw money */
+  function allowance(address tokenOwner, address spender) external view returns (uint256) {
+     return allowances[tokenOwner][spender];
+  }
+
+  /* Function for sending tokens */
+  function transfer(address to, uint tokens) external returns (bool) {
+     bool success =  _transfer(msg.sender, to, tokens); 
+     if (success == false) return false;
+     return true;
+  }
+
+  function _transfer(address from, address to, uint tokens) internal returns (bool) {
+     bool success;
+     uint256 value;
+
+     // Checking that the sender has enough tokens to send
+     if (balances[from] < tokens || tokens <= 0) return false;
+     // Prohibiting transmission to address 0x0. Checking what corresponds to the ETH address
+     if (to == address(0)) return false; 
+	  if (from == address(0)) return false;
+     // Overflow Check
+     if (balances[to] + tokens < balances[to]) return false;
+     // Subtracts tokens from the sender
+     (success, value) = SafeMath.safeSub(balances[from], tokens);
+     if (success == false) return false;
+     balances[from] = value;
+     // Adds tokens to the recipient
+     (success, value) = SafeMath.safeAdd(balances[to], tokens);
+     if (success == false) return false;
+     balances[to] = value;
+     // The Transfer event is triggered
+     emit Transfer(from, to, tokens);
+     return true;
+  }
+
+  /* Function for sending delegated tokens */
+  function transferFrom(address from, address to, uint256 tokens) external returns (bool) {
+	 bool success;
+	 uint256 value;
+
+     if (tokens > allowances[from][msg.sender]) return false;
+     success = _transfer(from, to, tokens);
+     if (success == false) return false;
+     (success, value) = SafeMath.safeSub(allowances[from][msg.sender], tokens);
+     if (success == false) return false;
+     allowances[from][msg.sender] = value;
+     emit Transfer(from, to, tokens);
+     return true;
+  }
+
+  /* /* Function for burning tokens */
+  function burn(uint256 tokens) external returns (bool) {
+	 bool success;
+	 uint256 value;
+	 
+     if (msg.sender == address(0)) return false; 
+     // check that the balance has the required number of tokens and their > 0
+     if (balances[msg.sender] < tokens || tokens <= 0) return false;
+     (success, value) = SafeMath.safeSub(balances[msg.sender], tokens);
+     if (success == false) return false;
+     balances[msg.sender] = value;
+     (success, value) = SafeMath.safeSub(_totalSupply, tokens);
+     if (success == false) return false;
+     _totalSupply = value;
+     emit Burn(msg.sender, tokens);// Launching an event Burn
+     return true;
+  }
+	
+  /* Token freezing function */
+  function freeze(uint256 tokens) external returns (bool) {
+	 bool success;
+	 uint256 value;
+  
+     if (msg.sender == address(0)) return false; 
+     //check that the balance has the required number of tokens and their > 0
+     if (balances[msg.sender] < tokens || tokens <= 0) return false;
+     // Reducing the balances in mapping
+     (success, value) = SafeMath.safeSub(balances[msg.sender], tokens);
+     if (success == false) return false;
+     balances[msg.sender] = value;
+     // Adding freezeoff to mapping
+     (success, value) = SafeMath.safeAdd(freezes[msg.sender], tokens);
+     if (success == false) return false;
+     freezes[msg.sender] = value;
+     emit Freeze(msg.sender, tokens);
+     return true;
+  }
+	
+  /* Token defrosting function */
+  function unfreeze(uint256 tokens) external returns (bool) {
+	 bool success;
+	 uint256 value;
+  
+     if (msg.sender == address(0)) return false; 
+     // checking that there are the required number of frozen tokens and their > 0
+     if (freezes[msg.sender] < tokens || tokens <= 0) return false;
+     (success, value) = SafeMath.safeSub(freezes[msg.sender], tokens);
+     if (success == false) return false;
+     freezes[msg.sender] = value;
+     (success, value) = SafeMath.safeAdd(balances[msg.sender], tokens);
+     if (success == false) return false;
+     balances[msg.sender] = value;
+     emit Unfreeze(msg.sender, tokens);
+     return true;
+  }
+
+  /* Allows the creator to output Ethers and tokens stored at the address of the contract */
+  function withdrawEther(uint256 amount) public {
+     if (msg.sender == owner)
+	  payable(owner).transfer(amount);
+     }
+	
+  // The payable function allows the contract to receive and store ethers
+  receive() external payable {}
+}  
